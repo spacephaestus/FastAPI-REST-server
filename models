@@ -1,0 +1,18 @@
+from typing import Optional
+from datetime import datetime
+from sqlmodel import SQLModel, Field
+
+# Shared fields for both input and DB row
+class TelemetryBase(SQLModel):
+    subsystem: str
+    timestamp: datetime
+    value: float
+
+# ORM/table model stored in SQLite
+class Telemetry(TelemetryBase, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)  # auto-increment
+
+# Input schema for POST requests
+class TelemetryCreate(TelemetryBase):
+    id: Optional[int] = None  # client may provide id; if omitted, DB assigns
+
