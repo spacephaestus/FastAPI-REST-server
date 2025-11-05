@@ -1,0 +1,70 @@
+from fastapi import FastAPI, HTTPException
+from sqlalchemy.exc import IntegrityError
+from sqlmodel import select
+from models import Telemetry, TelemetryCreate
+from db import init_db, get_session, DB_PATH
+
+app = FastAPI(title="Telemetry Service")
+
+# Startup: ensure table exists
+@app.on_event("startup")
+def on_startup():
+    init_db()
+
+# Create a telemetry record (id optional)
+@app.post("/telemetry", status_code=201)
+def create_telemetry(record: TelemetryCreate):
+    row = Telemetry(**record.model_dump())  # build ORM row explicitly
+    with get_session() as session:
+        try:
+            session.add(row)
+            session.commit()
+            session.refresh(row)
+            return row
+        except IntegrityError:
+            session.rollback()
+            raise HTTPException(status_code=409, detail="Record with this id already exists")
+
+# Read a single record by id
+@app.get("/telemetry/{record_id}")
+def get_telemetry(record_id: int):
+    with get_session() as session:
+        stmt = select(Telemetry).where(Telemetry.id == record_id)
+        result = session.exec(stmt).first()
+        if result is None:
+            raise HTTPException(status_code=404, detail="Record not found")
+        return result
+
+# List all telemetry
+@app.get("/telemetry")
+def list_telemetry():
+    with get_session() as session:
+        return session.exec(select(Telemetry)).all()
+
+# Debug: show DB path and row summary
+@app.get("/debug/db")
+def debug_db():
+    with get_session() as session:
+        rows = session.exec(select(Telemetry)).all()
+        return {
+            "db_path": str(DB_PATH),
+            "count": len(rows),
+            "ids": [r.id for r in rows],
+        }
+
+# Optional: dump all rows for sanity checks
+@app.get("/debug/rows")
+def debug_rows():
+    with get_session() as session:
+        rows = session.exec(select(Telemetry)).all()
+        return {
+            "db_path": str(DB_PATH),
+            "rows": [
+                {
+                    "id": r.id,
+                    "subsystem": r.subsystem,
+                    "timestamp": r.timestamp.isoformat(),
+                    "value": r.value,
+                } for r in rows
+            ],
+        }
